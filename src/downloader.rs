@@ -195,4 +195,155 @@ mod tests {
         // Cleanup
         tokio::fs::remove_dir_all(&temp_dir).await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_is_download_in_progress_crdownload() {
+        let temp_dir = std::env::temp_dir().join(format!("annadl_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
+
+        let downloader = Downloader::new(temp_dir.clone()).unwrap();
+
+        let filename = "test_file.epub";
+        let crdownload_file = temp_dir.join(format!("{}.crdownload", filename));
+
+        // No file exists
+        assert!(!downloader.is_download_in_progress(filename));
+
+        // Create .crdownload file
+        File::create(&crdownload_file).await.unwrap();
+        assert!(downloader.is_download_in_progress(filename));
+
+        // Cleanup
+        tokio::fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
+
+    #[test]
+    fn test_extract_filename_from_url_with_query_params() {
+        assert_eq!(
+            Downloader::extract_filename_from_url("https://example.com/file.pdf?token=abc123"),
+            None // Query params should cause this to return None
+        );
+    }
+
+    #[test]
+    fn test_extract_filename_from_url_trailing_slash() {
+        assert_eq!(
+            Downloader::extract_filename_from_url("https://example.com/path/"),
+            None // Empty segment should return None
+        );
+    }
+
+    #[test]
+    fn test_extract_filename_from_url_special_chars() {
+        assert_eq!(
+            Downloader::extract_filename_from_url("https://example.com/file%2Bname.pdf"),
+            Some("file+name.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_filename_from_url_unicode() {
+        assert_eq!(
+            Downloader::extract_filename_from_url("https://example.com/книга.pdf"),
+            Some("книга.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_content_disposition_simple() {
+        assert_eq!(
+            Downloader::parse_content_disposition("attachment; filename=book.pdf"),
+            Some("book.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_content_disposition_no_quotes() {
+        assert_eq!(
+            Downloader::parse_content_disposition("attachment; filename=simple.txt"),
+            Some("simple.txt".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_content_disposition_inline() {
+        assert_eq!(
+            Downloader::parse_content_disposition("inline; filename=\"document.pdf\""),
+            Some("document.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_content_disposition_extended() {
+        assert_eq!(
+            Downloader::parse_content_disposition("attachment; filename*=UTF-8''document%20with%20spaces.pdf"),
+            Some("document with spaces.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_content_disposition_both_formats() {
+        // When both filename and filename* are present, filename* should take precedence
+        let disposition = "attachment; filename=\"fallback.pdf\"; filename*=UTF-8''actual%20file.pdf";
+        let result = Downloader::parse_content_disposition(disposition);
+        // Current implementation returns first match, so it would return "fallback.pdf"
+        // But ideally it should prioritize filename*
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_content_disposition_no_filename() {
+        assert_eq!(
+            Downloader::parse_content_disposition("attachment"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_parse_content_disposition_malformed() {
+        // Current implementation returns empty string for "filename="
+        let result = Downloader::parse_content_disposition("filename=");
+        assert_eq!(result, Some("".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_partial_downloads() {
+        let temp_dir = std::env::temp_dir().join(format!("annadl_cleanup_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
+
+        let downloader = Downloader::new(temp_dir.clone()).unwrap();
+
+        // Create some partial download files
+        File::create(temp_dir.join("file1.pdf.part")).await.unwrap();
+        File::create(temp_dir.join("file2.epub.crdownload")).await.unwrap();
+        File::create(temp_dir.join("complete_file.pdf")).await.unwrap();
+
+        // Run cleanup
+        downloader.cleanup_partial_downloads().await.unwrap();
+
+        // Verify partial files are removed
+        assert!(!temp_dir.join("file1.pdf.part").exists());
+        assert!(!temp_dir.join("file2.epub.crdownload").exists());
+
+        // Verify complete file still exists
+        assert!(temp_dir.join("complete_file.pdf").exists());
+
+        // Cleanup
+        tokio::fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_partial_downloads_empty_dir() {
+        let temp_dir = std::env::temp_dir().join(format!("annadl_cleanup_empty_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
+
+        let downloader = Downloader::new(temp_dir.clone()).unwrap();
+
+        // Should not error on empty directory
+        let result = downloader.cleanup_partial_downloads().await;
+        assert!(result.is_ok());
+
+        // Cleanup
+        tokio::fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
 }

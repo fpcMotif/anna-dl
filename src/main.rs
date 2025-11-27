@@ -283,3 +283,115 @@ enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn test_cli_parse_no_args() {
+        let cli = Cli::try_parse_from(&["annadl"]).unwrap();
+        assert!(cli.search_query.is_none());
+        assert_eq!(cli.num_results, 5);
+        assert!(!cli.interactive);
+        assert!(!cli.config);
+    }
+
+    #[test]
+    fn test_cli_parse_search_query() {
+        let cli = Cli::try_parse_from(&["annadl", "rust programming"]).unwrap();
+        assert_eq!(cli.search_query, Some("rust programming".to_string()));
+        assert_eq!(cli.num_results, 5);
+    }
+
+    #[test]
+    fn test_cli_parse_num_results_short() {
+        let cli = Cli::try_parse_from(&["annadl", "test", "-n", "10"]).unwrap();
+        assert_eq!(cli.num_results, 10);
+    }
+
+    #[test]
+    fn test_cli_parse_num_results_long() {
+        let cli = Cli::try_parse_from(&["annadl", "test", "--num-results", "20"]).unwrap();
+        assert_eq!(cli.num_results, 20);
+    }
+
+    #[test]
+    fn test_cli_parse_download_path_short() {
+        let cli = Cli::try_parse_from(&["annadl", "-p", "/tmp/books"]).unwrap();
+        assert_eq!(cli.download_path, Some(PathBuf::from("/tmp/books")));
+    }
+
+    #[test]
+    fn test_cli_parse_download_path_long() {
+        let cli = Cli::try_parse_from(&["annadl", "--download-path", "/home/user/downloads"]).unwrap();
+        assert_eq!(cli.download_path, Some(PathBuf::from("/home/user/downloads")));
+    }
+
+    #[test]
+    fn test_cli_parse_set_path() {
+        let cli = Cli::try_parse_from(&["annadl", "--set-path", "/new/path"]).unwrap();
+        assert_eq!(cli.set_path, Some(PathBuf::from("/new/path")));
+    }
+
+    #[test]
+    fn test_cli_parse_interactive_short() {
+        let cli = Cli::try_parse_from(&["annadl", "-i"]).unwrap();
+        assert!(cli.interactive);
+    }
+
+    #[test]
+    fn test_cli_parse_interactive_long() {
+        let cli = Cli::try_parse_from(&["annadl", "--interactive"]).unwrap();
+        assert!(cli.interactive);
+    }
+
+    #[test]
+    fn test_cli_parse_config_flag() {
+        let cli = Cli::try_parse_from(&["annadl", "--config"]).unwrap();
+        assert!(cli.config);
+    }
+
+    #[test]
+    fn test_cli_parse_combined_flags() {
+        let cli = Cli::try_parse_from(&[
+            "annadl",
+            "rust book",
+            "-n", "15",
+            "-p", "/downloads",
+            "-i"
+        ]).unwrap();
+
+        assert_eq!(cli.search_query, Some("rust book".to_string()));
+        assert_eq!(cli.num_results, 15);
+        assert_eq!(cli.download_path, Some(PathBuf::from("/downloads")));
+        assert!(cli.interactive);
+    }
+
+    #[test]
+    fn test_cli_version_info() {
+        let cmd = Cli::command();
+        assert!(cmd.get_name() == "annadl");
+        assert!(cmd.get_version().is_some());
+    }
+
+    #[test]
+    fn test_cli_help_message() {
+        let cmd = Cli::command();
+        let about = cmd.get_about();
+        assert!(about.is_some());
+    }
+
+    #[test]
+    fn test_cli_invalid_num_results() {
+        let result = Cli::try_parse_from(&["annadl", "-n", "not-a-number"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_default_num_results() {
+        let cli = Cli::try_parse_from(&["annadl"]).unwrap();
+        assert_eq!(cli.num_results, 5); // Default value
+    }
+}
