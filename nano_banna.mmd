@@ -1,0 +1,36 @@
+graph TD
+    User((User))
+    CLI[CLI (Cobra)]
+    TUI[TUI (Bubble Tea)]
+    Scraper[Scraper (GoQuery)]
+    Downloader[Downloader]
+    Config[Config]
+    FS[(File System)]
+    Web((Anna's Archive))
+
+    User --> CLI
+    CLI --> TUI
+    CLI --> Config
+    TUI --> Scraper
+    TUI --> Downloader
+    TUI --> Config
+
+    Scraper -->|HTTP GET| Web
+    Downloader -->|HTTP GET| Web
+    Downloader -->|Write| FS
+    Config -->|Read/Write| FS
+
+    subgraph Tests
+        ST[Scraper Tests]
+        DT[Downloader Tests]
+        CT[Config Tests]
+
+        ST -.->|Mock| Web
+        ST --> Scraper
+
+        DT -.->|Mock| Web
+        DT --> Downloader
+
+        CT --> Config
+        CT -.->|Temp Dir| FS
+    end

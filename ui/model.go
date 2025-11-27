@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var Program *tea.Program
+
 type Mode int
 
 const (

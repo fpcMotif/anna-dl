@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+
+	"github.com/Nquxii/anna-dl-go/scraper"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )

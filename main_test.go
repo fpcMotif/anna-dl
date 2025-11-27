@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,8 +10,9 @@ import (
 func TestConfigLoading(t *testing.T) {
 	// Create a temporary config directory
 	tempDir := t.TempDir()
-	configDir := filepath.Join(tempDir, ".config", "anna-dl-go")
-	os.MkdirAll(configDir, 0755)
+	configFile := filepath.Join(tempDir, "config.json")
+	config.ConfigPathOverride = configFile
+	defer func() { config.ConfigPathOverride = "" }()
 
 	// Test loading non-existent config (should return default)
 	cfg, err := config.Load()
@@ -26,11 +26,16 @@ func TestConfigLoading(t *testing.T) {
 }
 
 func TestConfigSaving(t *testing.T) {
+	tempDir := t.TempDir()
+	configFile := filepath.Join(tempDir, "config.json")
+	config.ConfigPathOverride = configFile
+	defer func() { config.ConfigPathOverride = "" }()
+
 	cfg := &config.Config{
 		DownloadPath: "~/Downloads/test",
 	}
 
-	// Test saving (this will use the actual config path)
+	// Test saving
 	err := cfg.Save()
 	if err != nil {
 		t.Fatalf("Failed to save config: %v", err)

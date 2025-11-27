@@ -28,7 +28,8 @@ type DownloadLink struct {
 }
 
 type AnnaScraper struct {
-	client *http.Client
+	client  *http.Client
+	BaseURL string
 }
 
 func New() *AnnaScraper {
@@ -41,11 +42,12 @@ func New() *AnnaScraper {
 				DisableCompression:  false,
 			},
 		},
+		BaseURL: "https://annas-archive.org",
 	}
 }
 
 func (s *AnnaScraper) Search(query string, maxResults int) ([]Book, error) {
-	searchURL := fmt.Sprintf("https://annas-archive.org/search?q=%s", url.QueryEscape(query))
+	searchURL := fmt.Sprintf("%s/search?q=%s", s.BaseURL, url.QueryEscape(query))
 	
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {
@@ -100,25 +102,25 @@ func (s *AnnaScraper) GetBookDetails(bookURL string) ([]DownloadLink, error) {
 
 func (s *AnnaScraper) parseSearchResults(doc *goquery.Document, maxResults int) ([]Book, error) {
 	var books []Book
-	var found bool
+	var foundWithSelector bool
 	
 	// Define fallbacks for different page structures
 	selectors := []string{"a.js-vim-focus.custom-a", "a[href*='md5']", ".book-title a"}
 	
 	for _, selector := range selectors {
 		doc.Find(selector).Each(func(i int, item *goquery.Selection) {
-			if i >= maxResults || found {
+			if len(books) >= maxResults {
 				return
 			}
 			
 			book := s.extractBookInfo(item, doc)
 			if book.Title != "" {
 				books = append(books, book)
+				foundWithSelector = true
 			}
-			found = true
 		})
 		
-		if found && len(books) > 0 {
+		if foundWithSelector {
 			break
 		}
 	}
@@ -137,7 +139,7 @@ func (s *AnnaScraper) extractBookInfo(item *goquery.Selection, doc *goquery.Docu
 	if !exists || !strings.HasPrefix(url, "/") {
 		return Book{}
 	}
-	url = "https://annas-archive.org" + url
+	url = s.BaseURL + url
 	
 	// Extract metadata from containing element
 	container := item.Closest("div")
@@ -203,6 +205,24 @@ func (s *AnnaScraper) extractDownloadLink(item *goquery.Selection) DownloadLink 
 }
 
 func (s *AnnaScraper) extractAuthor(text string) string {
+	// Try to find "Author [lang]" pattern first (common in search results)
+	// Example: "Author Name [en], epub, ..."
+	re := regexp.MustCompile(`([^\[\n]+)\s\[[a-z]{2}\]`)
+	matches := re.FindStringSubmatch(text)
+	if len(matches) > 1 {
+		author := strings.TrimSpace(matches[1])
+		// Sometimes title is included, we might want to filter it if possible,
+		// but with just text it's hard.
+		// However, the regex `([^\[\n]+)` stops at `[` so it captures everything before ` [lang]`.
+		// If the text is "Title\nAuthor [en]", it captures "Title\nAuthor".
+		// We should take the last line?
+		lines := strings.Split(author, "\n")
+		if len(lines) > 0 {
+			return strings.TrimSpace(lines[len(lines)-1])
+		}
+		return author
+	}
+
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -228,17 +248,17 @@ func (s *AnnaScraper) extractYear(text string) string {
 func (s *AnnaScraper) extractLanguage(text string) string {
 	re := regexp.MustCompile(`(\w+)\s+\[([a-z]{2})\]`)
 	matches := re.FindStringSubmatch(text)
-	if len(matches) > 1 {
-		return matches[1]
+	if len(matches) > 2 {
+		return matches[2]
 	}
 	return "Unknown"
 }
 
 func (s *AnnaScraper) extractFormat(text string) string {
-	re := regexp.MustCompile(`\b(EPUB|PDF|MOBI|AZW3|TXT|DOC|DOCX)\b`)
+	re := regexp.MustCompile(`(?i)\b(EPUB|PDF|MOBI|AZW3|TXT|DOC|DOCX)\b`)
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 0 {
-		return matches[0]
+		return strings.ToUpper(matches[0])
 	}
 	return "Unknown"
 }
