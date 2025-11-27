@@ -85,7 +85,7 @@ impl App {
         }
     }
 
-    async fn handle_keypress(&mut self, key: KeyEvent) -> Result<ControlFlow> {
+    pub async fn handle_keypress(&mut self, key: KeyEvent) -> Result<ControlFlow> {
         match self.mode {
             AppMode::Search => self.handle_search_input(key).await,
             AppMode::Results => self.handle_results_navigation(key).await,
@@ -238,7 +238,7 @@ impl App {
         Ok(ControlFlow::Continue)
     }
 
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>) {
+    pub fn draw(&mut self, f: &mut Frame) {
         match &self.mode {
             AppMode::Search => self.draw_search(f),
             AppMode::Results => self.draw_results(f),
@@ -249,7 +249,7 @@ impl App {
         }
     }
 
-    fn draw_search<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_search(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -269,7 +269,7 @@ impl App {
         f.render_widget(input, chunks[1]);
     }
 
-    fn draw_results<B: Backend>(&mut self, f: &mut Frame<B>) {
+    fn draw_results(&mut self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -342,7 +342,7 @@ impl App {
         f.render_widget(footer, chunks[2]);
     }
 
-    fn draw_download_selection<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_download_selection(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -399,7 +399,7 @@ impl App {
         f.render_widget(list, chunks[1]);
     }
 
-    fn draw_error<B: Backend>(&self, f: &mut Frame<B>, error: &str) {
+    fn draw_error(&self, f: &mut Frame, error: &str) {
         let block = Block::default()
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Red));
@@ -429,7 +429,7 @@ impl App {
         f.render_widget(error_paragraph, chunks[1]);
     }
 
-    fn draw_downloading<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_downloading(&self, f: &mut Frame) {
         let block = Block::default()
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Yellow))
@@ -459,7 +459,7 @@ impl App {
         f.render_widget(status_paragraph, chunks[1]);
     }
 
-    fn draw_help<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_help(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -581,8 +581,7 @@ impl App {
             self.books[self.selected_book_index].title
                 .chars()
                 .take(50)
-                .collect::
-            (), 
+                .collect::<String>(),
             self.books[self.selected_book_index].author.as_deref().unwrap_or("Unknown"),
             self.books[self.selected_book_index].format.as_deref().unwrap_or("unknown")
         );
@@ -617,7 +616,7 @@ impl App {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum ControlFlow {
+pub enum ControlFlow {
     Continue,
     Exit,
 }

@@ -6,7 +6,7 @@ mod ui;
 use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableMouseCapture, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -18,7 +18,7 @@ use std::io;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "annadl")
+#[command(name = "annadl")]
 #[command(about = "A Rust CLI tool for downloading books from Anna's Archive", long_about = None)]
 #[command(version)]
 struct Cli {
@@ -282,7 +282,4 @@ async fn run_non_interactive(query: String, num_results: usize, download_path: P
 enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
-    #[error("Crossterm error: {0}")]
-    Crossterm(#[from] crossterm::ErrorKind),
 }

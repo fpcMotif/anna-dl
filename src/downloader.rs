@@ -3,6 +3,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use futures::StreamExt;
 
 pub struct Downloader {
     client: reqwest::Client,
@@ -172,5 +173,26 @@ mod tests {
             Downloader::parse_content_disposition("attachment; filename*=UTF-8''test%20file.epub"),
             Some("test file.epub".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn test_is_download_in_progress() {
+        let temp_dir = std::env::temp_dir().join(format!("annadl_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        tokio::fs::create_dir_all(&temp_dir).await.unwrap();
+
+        let downloader = Downloader::new(temp_dir.clone()).unwrap();
+
+        let filename = "test_file.pdf";
+        let part_file = temp_dir.join(format!("{}.part", filename));
+
+        // No file exists
+        assert!(!downloader.is_download_in_progress(filename));
+
+        // Create .part file
+        File::create(&part_file).await.unwrap();
+        assert!(downloader.is_download_in_progress(filename));
+
+        // Cleanup
+        tokio::fs::remove_dir_all(&temp_dir).await.unwrap();
     }
 }
