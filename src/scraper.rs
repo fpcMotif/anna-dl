@@ -116,11 +116,15 @@ impl AnnaScraper {
                 ".download-link",
             ];
             
+            let mut seen_urls = std::collections::HashSet::new();
+
             for selector_str in &link_selectors {
                 if let Ok(selector) = Selector::parse(selector_str) {
                     for element in document.select(&selector) {
                         if let Some(link) = self.extract_download_link(element) {
-                            links.push(link);
+                            if seen_urls.insert(link.url.clone()) {
+                                links.push(link);
+                            }
                         }
                     }
                 }
@@ -130,7 +134,7 @@ impl AnnaScraper {
         Ok(links)
     }
     
-    fn extract_book_info(&self, element: &scraper::ElementRef, document: &Html) -> Option<Book> {
+    fn extract_book_info(&self, element: &scraper::ElementRef, _document: &Html) -> Option<Book> {
         let href = element.value().attr("href")?.to_string();
         let title = element.text().collect::<String>().trim().to_string();
         
@@ -139,12 +143,12 @@ impl AnnaScraper {
         }
         
         // Find parent container for metadata
-        let container = self.find_book_container(element.value(), document)?;
+        let container = self.find_book_container(*element)?;
         let container_text = container.text().collect::<String>();
         
         Some(Book {
-            title,
-            author: self.extract_author(&container_text),
+            title: title.clone(),
+            author: self.extract_author(&container_text, &title),
             year: self.extract_year(&container_text),
             language: self.extract_language(&container_text),
             format: self.extract_format(&container_text),
@@ -153,31 +157,32 @@ impl AnnaScraper {
         })
     }
     
-    fn find_book_container(&self, element: &scraper::Node, document: &Html) -> Option<scraper::ElementRef> {
-        // Try to find container with metadata by going up the tree
-        let container_selectors = [
-            "div.flex",
-            ".book-item",
-            "[class*='border']",
-            "div[class*='pt-3']",
-        ];
+    fn find_book_container<'a>(&self, element: scraper::ElementRef<'a>) -> Option<scraper::ElementRef<'a>> {
+        let mut current = element;
         
-        for selector_str in &container_selectors {
-            if let Ok(selector) = Selector::parse(selector_str) {
-                if let Some(container) = document.select(&selector).next() {
-                    return Some(container);
+        // Walk up up to 5 levels to find container
+        for _ in 0..5 {
+            if let Some(parent) = current.parent().and_then(scraper::ElementRef::wrap) {
+                let element = parent.value();
+                // Check for key classes
+                if element.classes().any(|c| c == "book-item" || c == "flex" || c.contains("border") || c.contains("pt-3")) {
+                    return Some(parent);
                 }
+                current = parent;
+            } else {
+                break;
             }
         }
         
         None
     }
     
-    fn extract_author(&self, text: &str) -> Option<String> {
+    fn extract_author(&self, text: &str, exclude: &str) -> Option<String> {
         // Look for author patterns in text
         let lines: Vec<&str> = text.lines().collect();
         for line in lines {
             let line = line.trim();
+            if line.is_empty() || line == exclude { continue; }
             // Author usually appears as a name without brackets or special chars
             if line.len() < 50 && !line.starts_with('[') && !line.contains("http") {
                 if line.chars().all(|c| c.is_alphabetic() || c.is_whitespace() || c == ',' || c == '.') {
@@ -210,6 +215,7 @@ impl AnnaScraper {
     
     fn extract_links_from_section(&self, section: &scraper::ElementRef) -> Vec<DownloadLink> {
         let mut links = Vec::new();
+        let mut seen_urls = std::collections::HashSet::new();
         
         let link_selectors = [
             "a[href*='libgen']",
@@ -222,7 +228,9 @@ impl AnnaScraper {
             if let Ok(selector) = Selector::parse(selector_str) {
                 for element in section.select(&selector) {
                     if let Some(link) = self.extract_download_link(element) {
-                        links.push(link);
+                        if seen_urls.insert(link.url.clone()) {
+                            links.push(link);
+                        }
                     }
                 }
             }
@@ -237,7 +245,7 @@ impl AnnaScraper {
         
         Some(DownloadLink {
             text,
-            url: href,
+            url: href.clone(),
             source: self.detect_source(&href),
         })
     }
@@ -277,5 +285,123 @@ pub struct DownloadLink {
 impl DownloadLink {
     pub fn is_reliable(&self) -> bool {
         self.source == "LibGen" && self.text.to_lowercase().contains("libgen")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_year() {
+        let scraper = AnnaScraper::new().unwrap();
+        assert_eq!(scraper.extract_year("Some Book (2023)"), Some("2023".to_string()));
+        assert_eq!(scraper.extract_year("Old Book [1999]"), Some("1999".to_string()));
+        assert_eq!(scraper.extract_year("No Year Here"), None);
+    }
+
+    #[test]
+    fn test_extract_language() {
+        let scraper = AnnaScraper::new().unwrap();
+        assert_eq!(scraper.extract_language("English [en]"), Some("English".to_string()));
+        assert_eq!(scraper.extract_language("Russian [ru]"), Some("Russian".to_string()));
+        assert_eq!(scraper.extract_language("No Lang"), None);
+    }
+
+    #[test]
+    fn test_extract_format() {
+        let scraper = AnnaScraper::new().unwrap();
+        assert_eq!(scraper.extract_format("File.PDF"), Some("PDF".to_string()));
+        assert_eq!(scraper.extract_format("Book in EPUB format"), Some("EPUB".to_string()));
+        assert_eq!(scraper.extract_format("Unknown format"), None);
+    }
+
+    #[test]
+    fn test_extract_size() {
+        let scraper = AnnaScraper::new().unwrap();
+        assert_eq!(scraper.extract_size("Size: 1.5MB"), Some("1.5MB".to_string()));
+        assert_eq!(scraper.extract_size("100KB"), Some("100KB".to_string()));
+        assert_eq!(scraper.extract_size("No size"), None);
+    }
+
+    #[test]
+    fn test_detect_source() {
+        let scraper = AnnaScraper::new().unwrap();
+        assert_eq!(scraper.detect_source("http://libgen.rs/book"), "LibGen");
+        assert_eq!(scraper.detect_source("https://annas-archive.org/md5/..."), "Anna's Archive");
+        assert_eq!(scraper.detect_source("http://example.com/mirror/1"), "Mirror");
+        assert_eq!(scraper.detect_source("http://unknown.com"), "Unknown");
+    }
+
+    #[tokio::test]
+    async fn test_parse_search_results() {
+        let scraper = AnnaScraper::new().unwrap();
+        let html = r#"
+        <html>
+            <body>
+                <div class="book-item">
+                    <a href="/md5/12345" class="js-vim-focus custom-a">Test Book</a>
+                    <div class="text-sm">
+                        Unknown Author
+                        2023
+                        English [en]
+                        PDF
+                        1.5MB
+                    </div>
+                </div>
+                <div class="book-item">
+                     <a href="/md5/67890" class="js-vim-focus custom-a">Another Book</a>
+                     <div class="text-sm">
+                        John Doe
+                        2020
+                        EPUB
+                     </div>
+                </div>
+            </body>
+        </html>
+        "#;
+
+        let books = scraper.parse_search_results(html, 10).await.unwrap();
+        // Depending on selector implementation, it might find books or not.
+        // Existing selectors: "a.js-vim-focus.custom-a"
+        // This matches our mock.
+
+        assert_eq!(books.len(), 2);
+
+        assert_eq!(books[0].title, "Test Book");
+        assert_eq!(books[0].url, "https://annas-archive.org/md5/12345");
+        // extract_year regex: r"\b(19|20)\d{2}\b"
+        assert_eq!(books[0].year.as_deref(), Some("2023"));
+        // extract_language regex: r"(\w+)\s+\[([a-z]{2})\]" -> matches "English [en]"
+        assert_eq!(books[0].language.as_deref(), Some("English"));
+        assert_eq!(books[0].format.as_deref(), Some("PDF"));
+        assert_eq!(books[0].size.as_deref(), Some("1.5MB"));
+
+        assert_eq!(books[1].title, "Another Book");
+        assert_eq!(books[1].author.as_deref(), Some("John Doe"));
+        assert_eq!(books[1].format.as_deref(), Some("EPUB"));
+    }
+
+    #[tokio::test]
+    async fn test_parse_download_links() {
+        let scraper = AnnaScraper::new().unwrap();
+        let html = r#"
+        <html>
+            <body>
+                <div id="external-downloads">
+                    <a href="http://libgen.li/ads" class="download-link">Libgen.li</a>
+                    <a href="https://annas-archive.org/slow" class="download-link">Slow Download</a>
+                </div>
+            </body>
+        </html>
+        "#;
+        // selector "#external-downloads" matches.
+        // inside, "a.download-link" matches.
+
+        let links = scraper.parse_download_links(html).await.unwrap();
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].text, "Libgen.li");
+        assert_eq!(links[0].source, "LibGen");
+        assert_eq!(links[1].source, "Anna's Archive");
     }
 }
