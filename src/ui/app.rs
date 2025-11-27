@@ -630,3 +630,333 @@ enum DownloadState {
     Complete,
     Error,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+
+    fn create_test_app() -> App {
+        let config = Config::default();
+        let download_path = PathBuf::from("/tmp/test");
+        App::new(config, download_path)
+    }
+
+    #[test]
+    fn test_app_initial_state() {
+        let app = create_test_app();
+        assert!(matches!(app.mode, AppMode::Search));
+        assert!(app.query.is_empty());
+        assert!(app.books.is_empty());
+        assert_eq!(app.selected_book_index, 0);
+        assert!(app.download_links.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_input_char() {
+        let mut app = create_test_app();
+        let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+
+        let result = app.handle_search_input(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert_eq!(app.query, "a");
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_input_backspace() {
+        let mut app = create_test_app();
+        app.query = "test".to_string();
+
+        let key = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+        let result = app.handle_search_input(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert_eq!(app.query, "tes");
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_input_escape_exits() {
+        let mut app = create_test_app();
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+
+        let result = app.handle_search_input(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Exit);
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_input_ctrl_c_exits() {
+        let mut app = create_test_app();
+        let key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+        let result = app.handle_search_input(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Exit);
+    }
+
+    #[tokio::test]
+    async fn test_handle_search_input_f1_opens_help() {
+        let mut app = create_test_app();
+        let key = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
+
+        let result = app.handle_search_input(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert!(matches!(app.mode, AppMode::Help));
+    }
+
+    #[tokio::test]
+    async fn test_handle_results_navigation_down() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Results;
+        app.books = vec![
+            Book {
+                title: "Book 1".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url1".to_string(),
+            },
+            Book {
+                title: "Book 2".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url2".to_string(),
+            },
+        ];
+        app.selected_book_index = 0;
+
+        let key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        let result = app.handle_results_navigation(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert_eq!(app.selected_book_index, 1);
+    }
+
+    #[tokio::test]
+    async fn test_handle_results_navigation_up() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Results;
+        app.books = vec![
+            Book {
+                title: "Book 1".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url1".to_string(),
+            },
+            Book {
+                title: "Book 2".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url2".to_string(),
+            },
+        ];
+        app.selected_book_index = 1;
+
+        let key = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        let result = app.handle_results_navigation(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert_eq!(app.selected_book_index, 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_results_navigation_vim_keys() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Results;
+        app.books = vec![
+            Book {
+                title: "Book 1".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url1".to_string(),
+            },
+            Book {
+                title: "Book 2".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url2".to_string(),
+            },
+        ];
+        app.selected_book_index = 0;
+
+        // Test 'j' (down)
+        let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        app.handle_results_navigation(key).await.unwrap();
+        assert_eq!(app.selected_book_index, 1);
+
+        // Test 'k' (up)
+        let key = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
+        app.handle_results_navigation(key).await.unwrap();
+        assert_eq!(app.selected_book_index, 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_results_navigation_escape_returns_to_search() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Results;
+        app.query = "test query".to_string();
+        app.books = vec![
+            Book {
+                title: "Book 1".to_string(),
+                author: None,
+                year: None,
+                language: None,
+                format: None,
+                size: None,
+                url: "url1".to_string(),
+            },
+        ];
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let result = app.handle_results_navigation(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert!(matches!(app.mode, AppMode::Search));
+        assert!(app.query.is_empty());
+        assert!(app.books.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_download_selection_navigation() {
+        let mut app = create_test_app();
+        app.mode = AppMode::DownloadSelection;
+        app.download_links = vec![
+            DownloadLink {
+                text: "Link 1".to_string(),
+                url: "url1".to_string(),
+                source: "Source 1".to_string(),
+            },
+            DownloadLink {
+                text: "Link 2".to_string(),
+                url: "url2".to_string(),
+                source: "Source 2".to_string(),
+            },
+        ];
+        app.download_link_index = 0;
+
+        let key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        app.handle_download_selection(key).await.unwrap();
+        assert_eq!(app.download_link_index, 1);
+
+        let key = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        app.handle_download_selection(key).await.unwrap();
+        assert_eq!(app.download_link_index, 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_download_selection_escape_returns_to_results() {
+        let mut app = create_test_app();
+        app.mode = AppMode::DownloadSelection;
+        app.download_links = vec![
+            DownloadLink {
+                text: "Link 1".to_string(),
+                url: "url1".to_string(),
+                source: "Source 1".to_string(),
+            },
+        ];
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let result = app.handle_download_selection(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert!(matches!(app.mode, AppMode::Results));
+        assert!(app.download_links.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_error_escape_returns_to_search() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Error("Test error".to_string());
+        app.error_message = "Test error".to_string();
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let result = app.handle_error(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert!(matches!(app.mode, AppMode::Search));
+        assert!(app.error_message.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_error_enter_returns_to_search() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Error("Test error".to_string());
+
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let result = app.handle_error(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert!(matches!(app.mode, AppMode::Search));
+    }
+
+    #[tokio::test]
+    async fn test_handle_help_toggle() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Help;
+
+        // F1 should toggle back
+        let key = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
+        let result = app.handle_help(key).await.unwrap();
+
+        assert_eq!(result, ControlFlow::Continue);
+        assert!(matches!(app.mode, AppMode::Search));
+    }
+
+    #[tokio::test]
+    async fn test_handle_help_scrolling() {
+        let mut app = create_test_app();
+        app.mode = AppMode::Help;
+        app.help_scroll = 0;
+
+        // Scroll down
+        let key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+        app.handle_help(key).await.unwrap();
+        assert_eq!(app.help_scroll, 1);
+
+        // Scroll up
+        let key = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+        app.handle_help(key).await.unwrap();
+        assert_eq!(app.help_scroll, 0);
+    }
+
+    #[test]
+    fn test_control_flow_enum() {
+        assert_eq!(ControlFlow::Continue, ControlFlow::Continue);
+        assert_eq!(ControlFlow::Exit, ControlFlow::Exit);
+        assert_ne!(ControlFlow::Continue, ControlFlow::Exit);
+    }
+
+    #[test]
+    fn test_app_command_clone() {
+        let cmd = AppCommand::Search("test".to_string(), 5);
+        let cloned = cmd.clone();
+
+        match (cmd, cloned) {
+            (AppCommand::Search(q1, n1), AppCommand::Search(q2, n2)) => {
+                assert_eq!(q1, q2);
+                assert_eq!(n1, n2);
+            }
+            _ => panic!("Clone failed"),
+        }
+    }
+}
