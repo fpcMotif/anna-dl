@@ -1,23 +1,55 @@
-# Rust
-/target/
-Cargo.lock
-*.pdb
+# Binaries 
+annadl
+annadl.exe
+annadl-*
+build/
+dist/
 
-# IDE
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+go.work
+
+# Dependency directories
+vendor/
+
+# IDE and editors
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Downloads
-/assets/
-*.pdf
-*.epub
-*.mobi
-*.azw3
-*.txt
+# OS files
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Test coverage
+*.cover
+*.coverage
+*.html
+
+# Logs
+*.log
+
+# Config files (except example)
+config.json
+!config.example.json
+
+# Download directory (if created in repo)
+assets/
+Downloads/
+
+# Release artifacts
+releases/
+*.tar.gz
+*.zip

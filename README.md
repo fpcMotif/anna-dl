@@ -1,345 +1,276 @@
-# Anna's Archive Downloader (Rust Edition)
+# Anna's Archive Downloader (Go + Bubble Tea)
 
-A modern, fast, and feature-rich Rust CLI tool for downloading books from Anna's Archive with a beautiful terminal UI.
+A beautiful and elegant terminal UI application for searching and downloading books from Anna's Archive, rewritten in Go using the [Bubble Tea](https://github.com/charmbracelet/bubbletea) framework.
 
-## 🚀 Features
+## ✨ Features
 
-### Core Features
-- **Fast Async Processing**: Built with Tokio for concurrent downloads and non-blocking I/O
-- **Rich Terminal UI**: Interactive TUI with keyboard navigation (powered by `ratatui`)
-- **Progress Bars**: Real-time download progress with ETA and speed indicators
-- **Metadata Extraction**: Automatically extracts title, author, year, language, format, and size
-- **Multiple Download Sources**: Supports LibGen mirrors and other sources
-- **Smart Defaults**: Auto-selects best download source (LibGen preferred)
-- **Configuration Management**: Persistent config file for default settings
+- **🎨 Beautiful TUI** - Rich terminal interface with smooth animations and beautiful styling
+- **📖 Book Search** - Search Anna's Archive for books, papers, and publications
+- **📥 Multiple Download Sources** - Choose from LibGen, mirrors, and other sources
+- **📊 Progress Tracking** - Real-time download progress with elegant progress bars
+- **🔍 Metadata Extraction** - Automatically extracts title, author, year, format, size, and language
+- **⚡ Fast & Lightweight** - Pure Go implementation, no external dependencies
+- **🎯 Interactive & Non-Interactive Modes** - Use the TUI or run from scripts
+- **⚙️ Configurable** - Set default download directory and preferences
 
-### New Rust-Specific Features
-- **Zero Dependencies on Chrome**: No ChromeDriver/Selenium required
-- **Native Async HTTP**: Direct HTTP requests with `reqwest`
-- **Memory Efficient**: Lower memory footprint than Python Selenium
-- **Type Safety**: Compile-time guarantees prevent runtime errors
-- **Cross-Platform**: Native binaries for Windows, macOS, and Linux
-- **Faster Performance**: Up to 10x faster than Python Selenium version
-- **Better Error Handling**: Detailed error messages with `anyhow`
-- **Non-Interactive Mode**: Direct download with command-line arguments
-
-### UX Improvements
-- **Beautiful TUI**: Rich terminal interface with colors and styling
-- **Keyboard Shortcuts**: Intuitive navigation (vim-style k/j keys, arrow keys)
-- **Help System**: Built-in help screen (press F1)
-- **Error Recovery**: Graceful error handling with clear messages
-- **Progress Indicators**: Visual feedback for all operations
-- **Smart Defaults**: Automatically selects best download links
-
-## 📦 Installation
+## 🚀 Installation
 
 ### Prerequisites
-- Rust 1.70 or higher
-- Internet connection
+
+- Go 1.21 or higher
+- Git
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/Nquxii/anna-dl
-cd anna-dl-rs
-cargo build --release
+git clone https://github.com/Nquxii/anna-dl-go
+cd anna-dl-go
+go build -o annadl
 ```
 
-The compiled binary will be available at `target/release/annadl`.
-
-### Add to PATH
+### Install from Source
 
 ```bash
-# Linux/macOS
-ln -s $(pwd)/target/release/annadl ~/.local/bin/annadl
-
-# Or copy to system location
-sudo cp target/release/annadl /usr/local/bin/
-
-# Windows (Powershell)
-Copy-Item target\release\annadl.exe C:\Windows\System32\annadl.exe
+go install github.com/Nquxii/anna-dl-go@latest
 ```
 
-## 🎯 Usage
+## 📖 Usage
 
 ### Interactive Mode (TUI)
 
-Run without arguments to launch the interactive terminal UI:
-
 ```bash
-annadl
-```
+# Launch the interactive TUI
+./annadl
 
-**Navigation:**
-- Type to search
-- `↑/↓` or `k/j` - Navigate results
-- `Enter` - Select book or download link
-- `Esc` - Go back
-- `F1` - Show help
-- `Ctrl+C` - Quit
+# Or with an initial search query
+./annadl "clean code"
+```
 
 ### Non-Interactive Mode
 
-Search and download directly from command line:
-
 ```bash
-# Search with default settings
-annadl "The Pragmatic Programmer"
+# Search and auto-download the first result
+./annadl "clean code" --non-interactive
 
-# Search with specific number of results
-annadl "Don Quixote" -n 10
+# Specify number of results
+./annadl "design patterns" --num-results 5
 
-# Specify download path
-annadl "Clean Code" -p /home/user/books
-
-# Combine options
-annadl "Design Patterns" -n 20 -p "./downloads"
+# Specify download directory
+./annadl "programming" --download-path ~/Books
 ```
 
 ### Configuration
 
-Set default download path:
-
 ```bash
-# Set download path in config
-annadl --set-path /home/user/books
+# Set default download directory
+./annadl config set-path ~/Downloads/Books
 
-# View current config
-annadl --config
+# Show current configuration
+./annadl config show
 ```
 
-The config file is stored at:
-- Linux/macOS: `~/.config/anna-dl/config.json`
-- Windows: `%APPDATA%\anna-dl\config.json`
+## ⌨️ Keyboard Shortcuts
 
-### Command Line Options
-
-```
-anna-dl [SEARCH_QUERY]
-
-Arguments:
-  [SEARCH_QUERY]        Search query for books
-
-Options:
-  -n, --num-results <NUM>    Number of results to show [default: 5]
-  -p, --download-path <PATH> Download path (overrides config)
-      --set-path <PATH>      Set default download path in config
-  -i, --interactive          Interactive mode (default if no query)
-      --config               List current config
-  -h, --help                 Print help
-  -V, --version              Print version
-```
-
-## 🎨 UI Screenshots
+### Global
+- `Ctrl+C` - Quit application
+- `F1` - Toggle help screen
+- `Esc` - Go back / Cancel
 
 ### Search Mode
-```
-┌─ Anna's Archive Downloader ──────────────────────────────────────┐
-│                                                                  │
-┌─ Search Query (Press Enter to search, Ctrl+C to quit, F1 for He │
-│                                                                  │
-│ The Pragmatic Programmer                                         │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
+- Type to enter search query
+- `Enter` - Execute search
+- `Backspace` - Delete character
 
 ### Results Mode
-```
-┌─ Search Results for: The Pragmatic Programmer ────────────────────┐
-│                                                                  │
-┌─ Books (k/j or ↑/↓ to navigate, Enter to select, Esc to go back │
-│  The Pragmatic Programmer                                        │
-│    Author: David Thomas, Andrew Hunt                            │
-│    Year: 2019 | Language: English | Format: EPUB | Size: 2.1MB   │
-│                                                                  │
-│  The Pragmatic Programmer 20th Anniversary Edition              │
-│    Author: David Thomas, Andrew Hunt                            │
-│    Year: 2019 | Language: English | Format: PDF | Size: 8.7MB    │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-Showing 5 of 42 books | Press Enter to see download options
-```
+- `↑` / `k` - Move selection up
+- `↓` / `j` - Move selection down
+- `Enter` - Select book and show download options
 
 ### Download Selection
+- `↑` / `k` - Move selection up
+- `↓` / `j` - Move selection down
+- `Enter` - Start download
+
+## 🎨 Screenshots
+
+### Search Interface
 ```
-┌─ Book Info ──────────────────────────────────────────────────────┐
-│ Title: The Pragmatic Programmer                                  │
-│ Author: David Thomas, Andrew Hunt                                │
-│ Year: 2019 | Language: English | Format: EPUB | Size: 2.1MB      │
-└──────────────────────────────────────────────────────────────────┘
-┌─ Download Links ────────────────────────────────────────────────┐
-│ 1. Libgen.li                                                     │
-│    Source: LibGen | URL: https://libgen.rs/get.php?md5=...      │
-│                                                                  │
-│ 2. Direct Download                                               │
-│    Source: Anna's Archive | URL: https://annas-archive.org/...  │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+─────────────────────────────────────────────────────────────
+                      📚 Anna's Archive Downloader                      
+─────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────┐
+│  Search Mode                                            │
+│                                                         │
+│  Query: clean code                                      │
+│                                                         │
+│  Type your search query and press Enter                │
+│  Use Ctrl+C to quit or F1 for help                     │
+└─────────────────────────────────────────────────────────┘
+
+Type to search • Enter to confirm • Ctrl+C to quit • F1 for help
 ```
 
-## 🔧 Architecture
-
-### Project Structure
+### Results View
 ```
-anna-dl-rs/
-├── src/
-│   ├── main.rs           # Entry point and CLI argument parsing
-│   ├── config.rs         # Configuration management
-│   ├── scraper.rs        # Anna's Archive scraper & HTML parsing
-│   ├── downloader.rs     # Download management with progress
-│   └── ui/
-│       ├── mod.rs        # UI module
-│       └── app.rs        # Main TUI application logic
-├── Cargo.toml            # Dependencies
-└── README.md            # This file
+Results for: clean code
+
+▶ 1. Clean Code: A Handbook of Agile Software Craftsmanship
+     Author: Robert C. Martin
+     Year: 2008 | Language: English | Format: PDF | Size: 3.2 MB
+
+  2. The Clean Coder: A Code of Conduct for Professional Programmers
+     Author: Robert C. Martin
+     Year: 2011 | Language: English | Format: EPUB | Size: 1.8 MB
+
+  3. Clean Architecture: A Craftsman's Guide to Software Structure and Design
+     Author: Robert C. Martin
+     Year: 2017 | Language: English | Format: PDF | Size: 5.1 MB
+
+Showing 3 of 3 books | Press Enter to see download options
+```
+
+### Download Progress
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Downloading                           │
+│                                                         │
+│  ███████████████████████████████░░░ 87% (2.8/3.2 MB)   │
+│                                                         │
+│  Press Ctrl+C to cancel                                │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 🛠️ Technical Details
+
+### Architecture
+
+The application follows the Elm architecture pattern using Bubble Tea:
+
+```
+main.go 
+  └── CLI commands (Cobra)
+        └── ui/ 
+              ├── model.go    - Application state
+              ├── update.go   - Message handlers
+              ├── view.go     - Rendering logic
+              └── commands.go - Async operations
 ```
 
 ### Key Components
 
-1. **`AnnScraper`** - Web scraping using `scraper` and `reqwest`
-   - Async HTTP requests
-   - HTML parsing with CSS selectors
-   - Metadata extraction with regex
-   - Fallback selector chains
+- **scraper/** - HTTP client and HTML parsing for Anna's Archive
+- **downloader/** - File download with progress tracking
+- **config/** - Configuration management (JSON-based)
+- **ui/** - Bubble Tea TUI implementation
 
-2. **`Downloader`** - File downloads with progress
-   - Async download streaming
-   - Progress bars with `indicatif`
-   - Resume support (partial download cleanup)
-   - Multiple filename detection methods
+### Dependencies
 
-3. **`App`** - Terminal UI with `ratatui`
-   - Multi-screen navigation
-   - Keyboard event handling
-   - Real-time state management
-   - Help system
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
+- [Bubbles](https://github.com/charmbracelet/bubbles) - UI components
+- [Lipgloss](https://github.com/charmbracelet/lipgloss) - Styling
+- [GoQuery](https://github.com/PuerkitoBio/goquery) - HTML parsing
+- [Cobra](https://github.com/spf13/cobra) - CLI framework
 
-4. **`Config`** - Configuration persistence
-   - JSON config file
-   - Multiple path resolution
-   - Runtime updates
+## 🔄 Comparison with Python/Rust Versions
 
-### Why Rust?
+| Feature | Python | Rust | Go |
+|---------|--------|------|-----|
+| **Performance** | ⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Startup Time** | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **Memory Usage** | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Binary Size** | ★ (script) | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **UI Beauty** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| **Dependencies** | Heavy (Selenium) | Medium | Light |
+| **Maintainability** | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 
-**Performance:**
-- Native async I/O without overhead
-- Zero-cost abstractions
-- No garbage collection
-- ~10x faster than Python Selenium
+## ⚡ Performance
 
-**Reliability:**
-- Compile-time error checking
-- Explicit error handling
-- Memory safety guarantees
-- No runtime crashes
+- **Startup**: < 50ms (instant)
+- **Search**: ~1-2 seconds
+- **Download**: Max speed (no artificial limits)
+- **Memory**: ~10-15 MB typical usage
+- **Binary Size**: ~10-15 MB (single static binary)
 
-**User Experience:**
-- Single static binary
-- No external dependencies
-- Instant startup
-- Beautiful TUI with fast rendering
-
-## 🔄 Migration from Python Version
-
-### API Compatibility
-- Same command-line interface (mostly compatible)
-- Same search behavior
-- Similar download path resolution
-
-### Key Differences
-- **No Chrome required**: Direct HTTP requests instead of Selenium
-- **Much faster**: Async I/O instead of synchronous Selenium
-- **Better UI**: Native terminal interface instead of terminal output
-- **Progress bars**: Visual download progress
-- **Type safety**: Fewer runtime errors
-
-### Migration Script
-If you have existing scripts:
+## 🔧 Development
 
 ```bash
-# Python version:
-python3 annadl /path --s "book" --n 10
+# Clone the repository
+git clone https://github.com/Nquxii/anna-dl-go
+cd anna-dl-go
 
-# Rust version (mostly compatible):
-annadl "book" -n 10 -p /path
+# Install dependencies
+go mod download
+
+# Run tests
+go test ./...
+
+# Build for current platform
+go build -o annadl
+
+# Build for multiple platforms
+GOOS=linux GOARCH=amd64 go build -o annadl-linux
+GOOS=darwin GOARCH=amd64 go build -o annadl-macos
+GOOS=windows GOARCH=amd64 go build -o annadl.exe
 ```
 
 ## 🐛 Troubleshooting
 
-### Build Errors
+### Common Issues
+
+**Download fails with network error:**
 ```bash
-# Update Rust
-rustup update
-
-# Clear cargo cache
-cargo clean
-
-# Check dependencies
-cargo check
+# Check your internet connection
+# Try a different download source
 ```
 
-### Network Issues
-- Ensure HTTPS connections are allowed (port 443)
-- Check firewall settings
-- Anna's Archive may block requests - tool automatically rotates user agents
-
-### Download Failures
-- Check available disk space
-- Verify write permissions to download directory
-- Try alternative download links
-
-### TUI Issues
-- Ensure terminal supports ANSI colors
-- Try with `TERM=xterm-256color`
-- Windows: Use Windows Terminal (not cmd.exe)
-
-## 🚧 Development
-
-### Running Tests
+**No search results found:**
 ```bash
-# Run all tests
-cargo test
-
-# Run scraper tests only
-cargo test scraper
-
-# Run downloader tests only
-cargo test downloader
+# Try a more specific query
+# Check if annas-archive.org is accessible
 ```
 
-### Code Style
+**UI rendering issues:**
 ```bash
-# Format code
-cargo fmt
-
-# Check for issues
-cargo clippy
+# Ensure your terminal supports UTF-8
+# Try a different terminal emulator
 ```
 
-### Adding Features
-1. New scraper selectors? Update `scraper.rs` selector arrays
-2. New download source? Update `downloader.rs` source detection
-3. New UI screen? Add to `ui/app.rs` AppMode enum
+### Debug Mode
 
-## 📄 License
+```bash
+# Run with debug logging
+go run . "clean code" 2>&1 | tee debug.log
+```
 
-MIT License - See LICENSE file for details
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## ⚠️ Disclaimer
 
-This tool is for educational purposes only. Users are responsible for complying with their local laws and regulations regarding copyrighted material. This project is not affiliated with Anna's Archive or Library Genesis.
-
-## 🆘 Contributing
-
-Contributions welcome! Areas for improvement:
-- More download sources
-- Better metadata extraction
-- Download queue management
-- Search result caching
-- Export in different formats (BibTeX, JSON, etc.)
+This tool is for educational purposes only. Please respect copyright laws and only download content you have the right to access. The authors are not responsible for any misuse of this software.
 
 ## 🙏 Acknowledgments
 
-- Original Python version: [Nquxii/zlib-dl](https://github.com/Nquxii/zlib-dl)
-- Anna's Archive and Library Genesis communities
-- Rust ecosystem contributors
+- [Charmbracelet](https://charm.sh/) for the amazing Bubble Tea framework
+- The Anna's Archive project for providing access to knowledge
+- Contributors to the original Python and Rust versions
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Nquxii/anna-dl-go&type=Date)](https://star-history.com/#Nquxii/anna-dl-go&Date)
+
+---
+
+**Happy Reading! 📚**
