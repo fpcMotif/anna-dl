@@ -108,7 +108,9 @@ func (m Model) performDownload() tea.Cmd {
 					progress: float64(progress.current) / float64(progress.total),
 					message:  downloader.GetProgressBar(progress.current, progress.total, 30),
 				}
-				ea.Send(progressMsg)
+				if Program != nil {
+					Program.Send(progressMsg)
+				}
 			}
 			close(progressDone)
 		}()
@@ -130,8 +132,6 @@ func (m Model) performDownload() tea.Cmd {
 
 // RunTUI runs the interactive terminal UI
 func RunTUI(initialQuery, downloadPath string, numResults int) error {
-	p := tea.NewProgram(NewModel(downloadPath), tea.WithAltScreen())
-	
 	// If there's an initial query, set it and trigger search
 	model := NewModel(downloadPath)
 	model.query = initialQuery
@@ -142,7 +142,8 @@ func RunTUI(initialQuery, downloadPath string, numResults int) error {
 		model.downloadMessage = "Searching..."
 	}
 	
-	p = tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen())
+	Program = p
 	
 	// Run the program
 	if _, err := p.Run(); err != nil {

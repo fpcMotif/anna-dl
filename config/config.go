@@ -8,6 +8,8 @@ import (
 	"github.com/mitchellh/go-homedir"
 )
 
+var ConfigPathOverride string
+
 type Config struct {
 	DownloadPath string `json:"download_path"`
 }
@@ -67,6 +69,9 @@ func (c *Config) Save() error {
 }
 
 func getConfigPath() (string, error) {
+	if ConfigPathOverride != "" {
+		return ConfigPathOverride, nil
+	}
 	home, err := homedir.Dir()
 	if err != nil {
 		return "", err

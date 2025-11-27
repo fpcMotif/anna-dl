@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -106,6 +105,13 @@ func (d *Downloader) Download(dlURL, filename string, progressFunc func(current,
 }
 
 func (d *Downloader) determineFilename(dlURL, contentDisposition string) string {
+	// Try to extract from Content-Disposition first
+	if contentDisposition != "" {
+		if name := parseContentDisposition(contentDisposition); name != "" {
+			return sanitizeFilename(name)
+		}
+	}
+
 	// Try to extract from URL
 	parsedURL, err := url.Parse(dlURL)
 	if err == nil {
@@ -119,13 +125,6 @@ func (d *Downloader) determineFilename(dlURL, contentDisposition string) string 
 					return sanitizeFilename(decoded)
 				}
 			}
-		}
-	}
-
-	// Try to extract from Content-Disposition
-	if contentDisposition != "" {
-		if name := parseContentDisposition(contentDisposition); name != "" {
-			return sanitizeFilename(name)
 		}
 	}
 
