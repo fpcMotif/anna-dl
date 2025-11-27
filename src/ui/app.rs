@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::downloader::Downloader;
-use crate::scraper::{AnnaScraper, Book, DownloadLink};
+use crate::scraper::{Book, DownloadLink};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -46,8 +45,6 @@ pub enum AppCommand {
     Search(String, usize),
     FetchDownloadLinks(String),
     Download(String, usize),
-    ShowError(String),
-    CompleteDownload(PathBuf),
 }
 
 impl App {
@@ -85,7 +82,7 @@ impl App {
         }
     }
 
-    async fn handle_keypress(&mut self, key: KeyEvent) -> Result<ControlFlow> {
+    pub async fn handle_keypress(&mut self, key: KeyEvent) -> Result<ControlFlow> {
         match self.mode {
             AppMode::Search => self.handle_search_input(key).await,
             AppMode::Results => self.handle_results_navigation(key).await,
@@ -238,7 +235,7 @@ impl App {
         Ok(ControlFlow::Continue)
     }
 
-    fn draw<B: Backend>(&mut self, f: &mut Frame<B>) {
+    pub fn draw(&mut self, f: &mut Frame) {
         match &self.mode {
             AppMode::Search => self.draw_search(f),
             AppMode::Results => self.draw_results(f),
@@ -249,7 +246,7 @@ impl App {
         }
     }
 
-    fn draw_search<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_search(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -269,7 +266,7 @@ impl App {
         f.render_widget(input, chunks[1]);
     }
 
-    fn draw_results<B: Backend>(&mut self, f: &mut Frame<B>) {
+    fn draw_results(&mut self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -342,7 +339,7 @@ impl App {
         f.render_widget(footer, chunks[2]);
     }
 
-    fn draw_download_selection<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_download_selection(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -399,7 +396,7 @@ impl App {
         f.render_widget(list, chunks[1]);
     }
 
-    fn draw_error<B: Backend>(&self, f: &mut Frame<B>, error: &str) {
+    fn draw_error(&self, f: &mut Frame, error: &str) {
         let block = Block::default()
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Red));
@@ -429,7 +426,7 @@ impl App {
         f.render_widget(error_paragraph, chunks[1]);
     }
 
-    fn draw_downloading<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_downloading(&self, f: &mut Frame) {
         let block = Block::default()
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Yellow))
@@ -459,7 +456,7 @@ impl App {
         f.render_widget(status_paragraph, chunks[1]);
     }
 
-    fn draw_help<B: Backend>(&self, f: &mut Frame<B>) {
+    fn draw_help(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -509,67 +506,17 @@ impl App {
     async fn perform_search(&mut self) -> Result<()> {
         self.mode = AppMode::Downloading;
         self.downloading_message = "Searching...".to_string();
-        
-        let query = self.query.clone();
-        let tx = self.command_tx.clone();
-        
-        tokio::spawn(async move {
-            let scraper = match AnnaScraper::new() {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Failed to create scraper: {}", e)));
-                    return;
-                }
-            };
-            
-            match scraper.search(&query, 20).await {
-                Ok(books) => {
-                    if books.is_empty() {
-                        let _ = tx.send(AppCommand::ShowError("No results found".to_string()));
-                    } else {
-                        // Note: This is a simplified version for the UI
-                        // In practice, you'd need a channel to send results back
-                    }
-                }
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Search error: {}", e)));
-                }
-            }
-        });
-        
+        self.command_tx.send(AppCommand::Search(self.query.clone(), 20))
+            .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
         Ok(())
     }
 
     async fn fetch_download_links(&mut self) -> Result<()> {
         self.mode = AppMode::Downloading;
         self.downloading_message = "Fetching download links...".to_string();
-        
         let book_url = self.books[self.selected_book_index].url.clone();
-        let tx = self.command_tx.clone();
-        
-        tokio::spawn(async move {
-            let scraper = match AnnaScraper::new() {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Failed to create scraper: {}", e)));
-                    return;
-                }
-            };
-            
-            match scraper.get_book_details(&book_url).await {
-                Ok(links) => {
-                    if links.is_empty() {
-                        let _ = tx.send(AppCommand::ShowError("No download links found".to_string()));
-                    } else {
-                        // Channel communication would go here in full implementation
-                    }
-                }
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Error fetching links: {}", e)));
-                }
-            }
-        });
-        
+        self.command_tx.send(AppCommand::FetchDownloadLinks(book_url))
+            .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
         Ok(())
     }
 
@@ -581,43 +528,21 @@ impl App {
             self.books[self.selected_book_index].title
                 .chars()
                 .take(50)
-                .collect::
-            (), 
+                .collect::<String>(),
             self.books[self.selected_book_index].author.as_deref().unwrap_or("Unknown"),
             self.books[self.selected_book_index].format.as_deref().unwrap_or("unknown")
         );
         
         self.downloading_message = format!("Downloading: {}", filename);
         
-        let url = link.url.clone();
-        let download_path = self.download_path.clone();
-        let tx = self.command_tx.clone();
-        
-        tokio::spawn(async move {
-            let downloader = match Downloader::new(download_path) {
-                Ok(d) => d,
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Failed to create downloader: {}", e)));
-                    return;
-                }
-            };
-            
-            match downloader.download(&url, Some(&filename)).await {
-                Ok(path) => {
-                    let _ = tx.send(AppCommand::CompleteDownload(path));
-                }
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Download failed: {}", e)));
-                }
-            }
-        });
-        
+        self.command_tx.send(AppCommand::Download(link.url.clone(), self.download_link_index))
+             .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))?;
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum ControlFlow {
+pub enum ControlFlow {
     Continue,
     Exit,
 }

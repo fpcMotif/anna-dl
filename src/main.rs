@@ -6,7 +6,7 @@ mod ui;
 use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableMouseCapture, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -18,7 +18,7 @@ use std::io;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "annadl")
+#[command(name = "annadl")]
 #[command(about = "A Rust CLI tool for downloading books from Anna's Archive", long_about = None)]
 #[command(version)]
 struct Cli {
@@ -140,8 +140,20 @@ async fn run_app(config: config::Config, download_path: PathBuf) -> Result<()> {
                     }
                 }
                 ui::AppCommand::Download(url, _link_index) => {
+                    let filename = if app.selected_book_index < app.books.len() {
+                        let book = &app.books[app.selected_book_index];
+                        Some(format!(
+                            "{} - {}.{}",
+                            book.title.chars().take(50).collect::<String>(),
+                            book.author.as_deref().unwrap_or("Unknown"),
+                            book.format.as_deref().unwrap_or("unknown")
+                        ))
+                    } else {
+                        None
+                    };
+
                     let downloader = downloader::Downloader::new(app.download_path.clone())?;
-                    match downloader.download(&url, None).await {
+                    match downloader.download(&url, filename.as_deref()).await {
                         Ok(path) => {
                             app.downloading_message = format!("Download complete: {}", path.display());
                             app.mode = ui::AppMode::Search;
@@ -154,14 +166,6 @@ async fn run_app(config: config::Config, download_path: PathBuf) -> Result<()> {
                             app.mode = ui::AppMode::Error(app.error_message.clone());
                         }
                     }
-                }
-                ui::AppCommand::ShowError(msg) => {
-                    app.error_message = msg;
-                    app.mode = ui::AppMode::Error(app.error_message.clone());
-                }
-                ui::AppCommand::CompleteDownload(path) => {
-                    app.downloading_message = format!("✓ Downloaded to: {}", path.display());
-                    app.mode = ui::AppMode::Search;
                 }
             }
         }
@@ -282,7 +286,4 @@ async fn run_non_interactive(query: String, num_results: usize, download_path: P
 enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
-    #[error("Crossterm error: {0}")]
-    Crossterm(#[from] crossterm::ErrorKind),
 }
