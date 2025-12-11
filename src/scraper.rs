@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use crate::cache::SearchCache;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Book {
@@ -16,6 +17,7 @@ pub struct Book {
 
 pub struct AnnaScraper {
     client: reqwest::Client,
+    cache: Option<SearchCache>,
 }
 
 impl AnnaScraper {
@@ -25,16 +27,41 @@ impl AnnaScraper {
             .user_agent(Self::random_user_agent())
             .build()
             .context("Failed to create HTTP client")?;
+
+        let cache = SearchCache::new().ok();
         
-        Ok(Self { client })
+        Ok(Self { client, cache })
+    }
+
+    #[cfg(test)]
+    pub fn with_cache(cache: SearchCache) -> Result<Self> {
+        let mut scraper = Self::new()?;
+        scraper.cache = Some(cache);
+        Ok(scraper)
     }
     
     pub async fn search(&self, query: &str, max_results: usize) -> Result<Vec<Book>> {
+        if let Some(cache) = &self.cache {
+            if let Ok(Some(books)) = cache.get(query) {
+                if books.len() >= max_results {
+                    return Ok(books.into_iter().take(max_results).collect());
+                }
+            }
+        }
+
         let search_url = format!("https://annas-archive.org/search?q={}", 
             urlencoding::encode(query));
         
         let html = self.fetch_html(&search_url).await?;
-        self.parse_search_results(&html, max_results).await
+        let books = self.parse_search_results(&html, max_results).await?;
+
+        if !books.is_empty() {
+            if let Some(cache) = &self.cache {
+                let _ = cache.set(query, &books);
+            }
+        }
+
+        Ok(books)
     }
     
     pub async fn get_book_details(&self, book_url: &str) -> Result<Vec<DownloadLink>> {
@@ -576,5 +603,42 @@ mod tests {
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ];
         assert!(valid_agents.contains(&agent1.as_str()));
+    }
+
+    #[tokio::test]
+    async fn test_search_uses_cache() {
+        // Temp dir
+        let temp_dir = std::env::temp_dir().join(format!("anna_dl_test_cache_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let cache_path = temp_dir.clone();
+
+        // Setup cache with data
+        {
+            let cache = crate::cache::SearchCache::at_path(cache_path.clone()).unwrap();
+            let mock_books = vec![Book {
+                title: "Cached Book".to_string(),
+                author: Some("Cached Author".to_string()),
+                year: Some("2022".to_string()),
+                language: Some("en".to_string()),
+                format: Some("pdf".to_string()),
+                size: Some("1MB".to_string()),
+                url: "http://cached.com".to_string(),
+            }];
+            cache.set("cached query", &mock_books).unwrap();
+        }
+
+        // Test scraper
+        let cache = crate::cache::SearchCache::at_path(cache_path).unwrap();
+        let scraper = AnnaScraper::with_cache(cache).unwrap();
+
+        // Request 1 result
+        let results = scraper.search("cached query", 1).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "Cached Book");
+
+        // Cleanup
+        std::fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

@@ -46,6 +46,7 @@ futures = "0.3"
 indicatif = "0.17"  # Progress bars
 walkdir = "2.4"
 dirs = "5.0"
+rusqlite = { version = "0.29", features = ["bundled"] }
 
 # Browser headers
 # fake_user_agent = "0.1"
