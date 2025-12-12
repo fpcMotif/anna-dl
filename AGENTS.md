@@ -307,7 +307,7 @@ strip = true           # Strip symbols
 - [ ] Resume interrupted downloads (Range headers)
 - [ ] Search result caching (SQLite)
 - [ ] Batch downloads (multiple books)
-- [ ] Filter by format/language/size
+- [x] Filter by format/language/size
 - [ ] Export to CSV/JSON/BibTeX
 
 **Medium Priority**:

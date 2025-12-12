@@ -111,9 +111,9 @@ async fn run_app(config: config::Config, download_path: PathBuf) -> Result<()> {
         // Check for commands
         if let Ok(command) = command_rx.try_recv() {
             match command {
-                ui::AppCommand::Search(query, num_results) => {
+                ui::AppCommand::Search(query, filters, num_results) => {
                     let scraper = scraper::AnnaScraper::new()?;
-                    match scraper.search(&query, num_results).await {
+                    match scraper.search(&query, &filters, num_results).await {
                         Ok(books) => {
                             app.books = books;
                             app.mode = ui::AppMode::Results;
@@ -198,7 +198,7 @@ async fn run_non_interactive(query: String, num_results: usize, download_path: P
     let scraper = scraper::AnnaScraper::new()
         .context("Failed to create scraper")?;
     
-    let books = scraper.search(&query, num_results)
+    let books = scraper.search(&query, &scraper::SearchFilters::default(), num_results)
         .await
         .context("Search failed")?;
     

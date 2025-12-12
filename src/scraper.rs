@@ -3,6 +3,13 @@ use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[derive(Debug, Clone, Default)]
+pub struct SearchFilters {
+    pub format: Option<String>,
+    pub language: Option<String>,
+    pub max_size_mb: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Book {
     pub title: String,
@@ -29,12 +36,54 @@ impl AnnaScraper {
         Ok(Self { client })
     }
     
-    pub async fn search(&self, query: &str, max_results: usize) -> Result<Vec<Book>> {
-        let search_url = format!("https://annas-archive.org/search?q={}", 
+    pub async fn search(&self, query: &str, filters: &SearchFilters, max_results: usize) -> Result<Vec<Book>> {
+        let mut search_url = format!("https://annas-archive.org/search?q={}",
             urlencoding::encode(query));
         
+        if let Some(ref fmt) = filters.format {
+             search_url.push_str(&format!("&ext={}", urlencoding::encode(fmt)));
+        }
+
+        if let Some(ref lang) = filters.language {
+             search_url.push_str(&format!("&lang={}", urlencoding::encode(lang)));
+        }
+
         let html = self.fetch_html(&search_url).await?;
-        self.parse_search_results(&html, max_results).await
+        let mut books = self.parse_search_results(&html, max_results * 2).await?;
+
+        // Post-filtering for size
+        if let Some(max_mb) = filters.max_size_mb {
+            books.retain(|b| {
+                if let Some(ref s) = b.size {
+                     Self::parse_size_mb(s).map(|v| v <= max_mb).unwrap_or(true)
+                } else {
+                    true
+                }
+            });
+        }
+
+        if books.len() > max_results {
+            books.truncate(max_results);
+        }
+
+        Ok(books)
+    }
+
+    fn parse_size_mb(size_str: &str) -> Option<f64> {
+        let size_str = size_str.trim();
+        let digits: String = size_str.chars().take_while(|c| c.is_digit(10) || *c == '.').collect();
+        let val = digits.parse::<f64>().ok()?;
+
+        let upper_size = size_str.to_uppercase();
+        if upper_size.contains("KB") {
+            Some(val / 1024.0)
+        } else if upper_size.contains("MB") {
+            Some(val)
+        } else if upper_size.contains("GB") {
+            Some(val * 1024.0)
+        } else {
+            Some(val)
+        }
     }
     
     pub async fn get_book_details(&self, book_url: &str) -> Result<Vec<DownloadLink>> {
@@ -576,5 +625,14 @@ mod tests {
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ];
         assert!(valid_agents.contains(&agent1.as_str()));
+    }
+
+    #[test]
+    fn test_parse_size_mb() {
+        assert_eq!(AnnaScraper::parse_size_mb("1.5MB"), Some(1.5));
+        assert_eq!(AnnaScraper::parse_size_mb("500KB"), Some(500.0 / 1024.0));
+        assert_eq!(AnnaScraper::parse_size_mb("1GB"), Some(1024.0));
+        assert_eq!(AnnaScraper::parse_size_mb("10.5 MB"), Some(10.5));
+        assert_eq!(AnnaScraper::parse_size_mb("Invalid"), None);
     }
 }
