@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::downloader::Downloader;
-use crate::scraper::{AnnaScraper, Book, DownloadLink};
+use crate::scraper::{AnnaScraper, Book, DownloadLink, SearchFilters};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -22,6 +22,7 @@ pub enum AppMode {
     Downloading,
     Error(String),
     Help,
+    Filters,
 }
 
 pub struct App {
@@ -39,11 +40,16 @@ pub struct App {
     pub command_tx: mpsc::UnboundedSender<AppCommand>,
     pub command_rx: mpsc::UnboundedReceiver<AppCommand>,
     pub downloading_message: String,
+    pub filters: SearchFilters,
+    pub filter_input_idx: usize,
+    pub filter_format_input: String,
+    pub filter_language_input: String,
+    pub filter_size_input: String,
 }
 
 #[derive(Debug, Clone)]
 pub enum AppCommand {
-    Search(String, usize),
+    Search(String, SearchFilters, usize),
     FetchDownloadLinks(String),
     Download(String, usize),
     ShowError(String),
@@ -69,6 +75,11 @@ impl App {
             command_tx: tx,
             command_rx: rx,
             downloading_message: String::new(),
+            filters: SearchFilters::default(),
+            filter_input_idx: 0,
+            filter_format_input: String::new(),
+            filter_language_input: String::new(),
+            filter_size_input: String::new(),
         }
     }
 
@@ -93,6 +104,7 @@ impl App {
             AppMode::Error(_) => self.handle_error(key).await,
             AppMode::Downloading => self.handle_downloading(key).await,
             AppMode::Help => self.handle_help(key).await,
+            AppMode::Filters => self.handle_filters(key).await,
         }
     }
 
@@ -105,6 +117,9 @@ impl App {
                 if !self.query.is_empty() {
                     self.perform_search().await?;
                 }
+            }
+            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.mode = AppMode::Filters;
             }
             KeyCode::Char(c) => {
                 self.query.push(c);
@@ -219,6 +234,67 @@ impl App {
         Ok(ControlFlow::Continue)
     }
 
+    async fn handle_filters(&mut self, key: KeyEvent) -> Result<ControlFlow> {
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = AppMode::Search;
+            }
+            KeyCode::Enter => {
+                // Apply filters
+                self.filters.format = if self.filter_format_input.trim().is_empty() {
+                    None
+                } else {
+                    Some(self.filter_format_input.trim().to_string())
+                };
+
+                self.filters.language = if self.filter_language_input.trim().is_empty() {
+                    None
+                } else {
+                    Some(self.filter_language_input.trim().to_string())
+                };
+
+                self.filters.max_size_mb = if self.filter_size_input.trim().is_empty() {
+                    None
+                } else {
+                    self.filter_size_input.trim().parse::<f64>().ok()
+                };
+
+                self.mode = AppMode::Search;
+            }
+            KeyCode::Tab | KeyCode::Down => {
+                self.filter_input_idx = (self.filter_input_idx + 1) % 3;
+            }
+            KeyCode::BackTab | KeyCode::Up => {
+                self.filter_input_idx = if self.filter_input_idx == 0 {
+                    2
+                } else {
+                    self.filter_input_idx - 1
+                };
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                return Ok(ControlFlow::Exit);
+            }
+            KeyCode::Char(c) => {
+                match self.filter_input_idx {
+                    0 => self.filter_format_input.push(c),
+                    1 => self.filter_language_input.push(c),
+                    2 => self.filter_size_input.push(c),
+                    _ => {}
+                }
+            }
+            KeyCode::Backspace => {
+                match self.filter_input_idx {
+                    0 => { self.filter_format_input.pop(); },
+                    1 => { self.filter_language_input.pop(); },
+                    2 => { self.filter_size_input.pop(); },
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        Ok(ControlFlow::Continue)
+    }
+
     async fn handle_help(&mut self, key: KeyEvent) -> Result<ControlFlow> {
         match key.code {
             KeyCode::Esc | KeyCode::F(1) => {
@@ -246,6 +322,7 @@ impl App {
             AppMode::Error(msg) => self.draw_error(f, msg),
             AppMode::Downloading => self.draw_downloading(f),
             AppMode::Help => self.draw_help(f),
+            AppMode::Filters => self.draw_filters(f),
         }
     }
 
@@ -253,6 +330,8 @@ impl App {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(3),
+                Constraint::Length(3),
                 Constraint::Length(3),
                 Constraint::Min(0),
             ])
@@ -264,9 +343,72 @@ impl App {
         f.render_widget(title, chunks[0]);
 
         let input = Paragraph::new(self.query.as_str())
-            .block(Block::default().borders(Borders::ALL).title("Search Query (Press Enter to search, Ctrl+C to quit, F1 for Help)"))
+            .block(Block::default().borders(Borders::ALL).title("Search Query (Enter: search, Ctrl+F: filters, Ctrl+C: quit, F1: Help)"))
             .style(Style::default().fg(Color::White));
         f.render_widget(input, chunks[1]);
+
+        let mut filter_text = String::new();
+        if let Some(ref fmt) = self.filters.format {
+            filter_text.push_str(&format!("Format: {} | ", fmt));
+        }
+        if let Some(ref lang) = self.filters.language {
+            filter_text.push_str(&format!("Lang: {} | ", lang));
+        }
+        if let Some(size) = self.filters.max_size_mb {
+            filter_text.push_str(&format!("Size < {}MB | ", size));
+        }
+
+        if filter_text.is_empty() {
+            filter_text = "No active filters".to_string();
+        } else {
+            filter_text = filter_text.trim_end_matches(" | ").to_string();
+        }
+
+        let filters_info = Paragraph::new(filter_text)
+             .block(Block::default().borders(Borders::ALL).title("Active Filters"))
+             .style(Style::default().fg(Color::Yellow));
+        f.render_widget(filters_info, chunks[2]);
+    }
+
+    fn draw_filters(&self, f: &mut Frame) {
+         let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Length(3), // Format
+                Constraint::Length(3), // Language
+                Constraint::Length(3), // Size
+                Constraint::Min(0),
+            ])
+            .split(f.size());
+
+        let title = Paragraph::new("Search Filters")
+            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .alignment(Alignment::Center);
+        f.render_widget(title, chunks[0]);
+
+        let format_style = if self.filter_input_idx == 0 { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::White) };
+        let format_input = Paragraph::new(self.filter_format_input.as_str())
+            .block(Block::default().borders(Borders::ALL).title("Format (e.g. pdf, epub)"))
+            .style(format_style);
+        f.render_widget(format_input, chunks[1]);
+
+        let lang_style = if self.filter_input_idx == 1 { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::White) };
+        let lang_input = Paragraph::new(self.filter_language_input.as_str())
+            .block(Block::default().borders(Borders::ALL).title("Language (e.g. en, fr, de)"))
+            .style(lang_style);
+        f.render_widget(lang_input, chunks[2]);
+
+        let size_style = if self.filter_input_idx == 2 { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::White) };
+        let size_input = Paragraph::new(self.filter_size_input.as_str())
+            .block(Block::default().borders(Borders::ALL).title("Max Size (MB)"))
+            .style(size_style);
+        f.render_widget(size_input, chunks[3]);
+
+        let footer = Paragraph::new("Press Enter to apply, Esc to cancel, Tab/Arrow keys to navigate")
+            .style(Style::default().fg(Color::Gray))
+            .alignment(Alignment::Center);
+        f.render_widget(footer, chunks[4]);
     }
 
     fn draw_results(&mut self, f: &mut Frame) {
@@ -510,32 +652,7 @@ impl App {
         self.mode = AppMode::Downloading;
         self.downloading_message = "Searching...".to_string();
         
-        let query = self.query.clone();
-        let tx = self.command_tx.clone();
-        
-        tokio::spawn(async move {
-            let scraper = match AnnaScraper::new() {
-                Ok(s) => s,
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Failed to create scraper: {}", e)));
-                    return;
-                }
-            };
-            
-            match scraper.search(&query, 20).await {
-                Ok(books) => {
-                    if books.is_empty() {
-                        let _ = tx.send(AppCommand::ShowError("No results found".to_string()));
-                    } else {
-                        // Note: This is a simplified version for the UI
-                        // In practice, you'd need a channel to send results back
-                    }
-                }
-                Err(e) => {
-                    let _ = tx.send(AppCommand::ShowError(format!("Search error: {}", e)));
-                }
-            }
-        });
+        let _ = self.command_tx.send(AppCommand::Search(self.query.clone(), self.filters.clone(), 20));
         
         Ok(())
     }
@@ -948,11 +1065,11 @@ mod tests {
 
     #[test]
     fn test_app_command_clone() {
-        let cmd = AppCommand::Search("test".to_string(), 5);
+        let cmd = AppCommand::Search("test".to_string(), SearchFilters::default(), 5);
         let cloned = cmd.clone();
 
         match (cmd, cloned) {
-            (AppCommand::Search(q1, n1), AppCommand::Search(q2, n2)) => {
+            (AppCommand::Search(q1, _, n1), AppCommand::Search(q2, _, n2)) => {
                 assert_eq!(q1, q2);
                 assert_eq!(n1, n2);
             }
